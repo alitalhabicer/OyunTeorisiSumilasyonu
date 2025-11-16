@@ -5,7 +5,6 @@ using System.Linq;
 namespace OyunTeorisi
 {
     // Karakter Stratejilerini temsil eden temsilci (delegate)
-    // NOT: Delegate tanımı namespace seviyesine taşındı.
     public delegate bool StrategyFunc(bool[] ownHistory, bool[] oppHistory, int i, bool isGrimTriggered, bool isOppGrimTriggered);
 
     // Turnuva boyunca bir karakter tipinin durumunu tutar
@@ -23,13 +22,13 @@ namespace OyunTeorisi
         // Global ve özel (private) değişkenler
         private static Random _rnd = new Random();
 
-        // Hain Hafıza stratejisi için durum takibi (Turnuva boyunca her maçta sıfırlanacak)
-        // NOT: Bu değişkenler, her maç yeniden başladığında PlayMatch içinde sıfırlanır.
+        // Hain Hafıza stratejisi için durum takibi (Her maçta sıfırlanacak)
         private static bool _grimTriggerA = false;
         private static bool _grimTriggerB = false;
 
+        // Popülasyon ve Turnuva Ayarları
         private static List<KarakterDurumu> _population = new List<KarakterDurumu>();
-        private const int TUR_SAYISI = 100; // Her bir ikili maçtaki tur sayısı
+        private const int TUR_SAYISI = 100; // Her bir ikili maçtaki tur sayısı (Evrimsel mod için)
 
         // Karakter adlarını kolayca bulmak için
         private static readonly string[] CharacterNames = {
@@ -40,7 +39,7 @@ namespace OyunTeorisi
         public static void Main()
         {
             Console.Clear();
-            Console.Title = "Oyun Teorisi Simülasyonu: EVRİMSEL TURNUVA";
+            Console.Title = "Oyun Teorisi Simülasyonu";
 
             OyunAmaciniYazdir();
             Console.WriteLine("\n" + new string('=', 80) + "\n");
@@ -51,15 +50,50 @@ namespace OyunTeorisi
             Console.WriteLine("\nDevam etmek için bir tuşa basın...");
             Console.ReadKey();
 
-            RunSimulation();
+            StartMenu(); // Yeni menü ile başlat
+        }
+
+        // Simülasyon Türü Seçim Menüsü
+        public static void StartMenu()
+        {
+            Console.Clear();
+            Console.ForegroundColor = ConsoleColor.Magenta;
+            Console.WriteLine("--- LÜTFEN SİMÜLASYON TÜRÜNÜ SEÇİN ---");
+            Console.ResetColor();
+            Console.WriteLine("1. Tekli Maç (1v1 Detaylı Karşılaştırma)");
+            Console.WriteLine("2. Evrimsel Turnuva (Popülasyon Evrimi)");
+            Console.WriteLine("0. Çıkış");
+
+            Console.Write("\nSeçiminiz (1/2/0): ");
+            string choice = Console.ReadLine();
+
+            switch (choice)
+            {
+                case "1":
+                    CharSelect_1v1();
+                    break;
+                case "2":
+                    RunSimulation();
+                    break;
+                case "0":
+                    Environment.Exit(0);
+                    break;
+                default:
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine("Geçersiz seçim. Tekrar deneyin.");
+                    Console.ResetColor();
+                    System.Threading.Thread.Sleep(1500);
+                    StartMenu();
+                    break;
+            }
         }
 
         #region EKRAN VE BILGI METOTLARI
-
+        // ... (OyunAmaciniYazdir, PuanTablosunuGoster, KarakterAciklamalariniGoster metotları değişmedi)
         public static void OyunAmaciniYazdir()
         {
             Console.ForegroundColor = ConsoleColor.Cyan;
-            Console.WriteLine("--- OYUN TEORİSİ SİMÜLASYONU: EVRİMSEL TURNUVA ---\n");
+            Console.WriteLine("--- OYUN TEORİSİ SİMÜLASYONU: TEKRARLI MAHKUM İKİLEMİ ---\n");
             Console.ResetColor();
 
             Console.WriteLine("Oyunun Amacı:");
@@ -128,9 +162,177 @@ namespace OyunTeorisi
             Console.WriteLine("10.\tİntikamcı\t\tKazandıysa aynı eylemi tekrarlar, kaybettiyse değiştirir (Pavlov).");
         }
 
+        public static int ReadCharacterSelection(string prompt)
+        {
+            while (true)
+            {
+                Console.Write(prompt);
+                string input = Console.ReadLine();
+                if (int.TryParse(input, out int selection) && selection >= 1 && selection <= 10)
+                {
+                    return selection;
+                }
+                else
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine("Hatalı seçim. Lütfen 1 ile 10 arasında bir sayı girin.");
+                    Console.ResetColor();
+                }
+            }
+        }
+
+        private static string FormatDelta(int delta)
+        {
+            if (delta > 0) return $"+{delta}";
+            return $"{delta}";
+        }
+
+        #endregion
+
+        #region 1V1 TEKLİ MAÇ METOTLARI
+
+        public static void CharSelect_1v1()
+        {
+            Console.Clear();
+            KarakterAciklamalariniGoster();
+            Console.WriteLine("\n" + new string('-', 60));
+
+            int select1 = ReadCharacterSelection("Karakter A'yı seçin (1-10): ");
+            int select2 = ReadCharacterSelection("Karakter B'yi seçin (1-10): ");
+
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine($"\nSeçimleriniz: A: {CharacterNames[select1 - 1]} vs B: {CharacterNames[select2 - 1]}");
+            Console.ResetColor();
+
+            Game_1v1(select1, select2);
+        }
+
+        public static void Game_1v1(int select1, int select2)
+        {
+            Console.WriteLine("\nKaç tur oynanacağını seçin (Örn: 100): ");
+            string oyunSayisiStr = Console.ReadLine();
+
+            if (!int.TryParse(oyunSayisiStr, out int sayisalDeger) || sayisalDeger <= 0)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine("Hatalı giriş. Lütfen 0'dan büyük bir sayı girin.");
+                Console.ResetColor();
+                System.Threading.Thread.Sleep(1500);
+                Game_1v1(select1, select2);
+                return;
+            }
+
+            // Skorları ve durumları sıfırla
+            int scoreA = 0;
+            int scoreB = 0;
+            _grimTriggerA = false;
+            _grimTriggerB = false;
+
+            // Dizileri tanımla ve başlat
+            bool[] strategyA = new bool[sayisalDeger];
+            bool[] strategyB = new bool[sayisalDeger];
+
+            Vs_1v1(select1, select2, strategyA, strategyB, ref scoreA, ref scoreB);
+        }
+
+        public static void Vs_1v1(int select1, int select2, bool[] strategyA, bool[] strategyB, ref int scoreA, ref int scoreB)
+        {
+            StrategyFunc strategyFuncA = GetStrategyFunc(select1);
+            StrategyFunc strategyFuncB = GetStrategyFunc(select2);
+
+            Console.Clear();
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine($"\n--- MAÇ: {CharacterNames[select1 - 1]} ({strategyA.Length} Tur) vs {CharacterNames[select2 - 1]} ({strategyB.Length} Tur) ---");
+            Console.ResetColor();
+            Console.WriteLine("\nTUR\tHAMLE A\t\tHAMLE B\t\tTOPLAM A\tTOPLAM B");
+            Console.WriteLine(new string('-', 70));
+
+            for (int i = 0; i < strategyA.Length; i++)
+            {
+                // 1. Hamleleri Hesapla
+                bool moveA = strategyFuncA(strategyA, strategyB, i, _grimTriggerA, _grimTriggerB);
+                bool moveB = strategyFuncB(strategyB, strategyA, i, _grimTriggerB, _grimTriggerA);
+
+                strategyA[i] = moveA;
+                strategyB[i] = moveB;
+
+                // 2. Hain Hafıza Durumunu Güncelle
+                if (select1 == 4 && moveB == false) _grimTriggerA = true;
+                if (select2 == 4 && moveA == false) _grimTriggerB = true;
+
+                // 3. Puanı Hesapla ve Güncelle
+                int scoreDeltaA, scoreDeltaB;
+                CalculatePayoff(moveA, moveB, out scoreDeltaA, out scoreDeltaB);
+                scoreA += scoreDeltaA;
+                scoreB += scoreDeltaB;
+
+                // 4. Çıktıyı Yazdır (Renkli)
+                WriteTurnOutput_1v1(i + 1, moveA, moveB, scoreA, scoreB, scoreDeltaA, scoreDeltaB);
+            }
+
+            Console.WriteLine(new string('=', 70));
+            ShowFinalResult_1v1(CharacterNames[select1 - 1], scoreA, CharacterNames[select2 - 1], scoreB);
+        }
+
+        // Tur çıktısını renklendirerek yazdırır (1v1)
+        private static void WriteTurnOutput_1v1(int turn, bool moveA, bool moveB, int totalA, int totalB, int deltaA, int deltaB)
+        {
+            Console.Write($"{turn}\t");
+
+            // Hamle A
+            Console.ForegroundColor = moveA ? ConsoleColor.DarkGreen : ConsoleColor.Red;
+            Console.Write(moveA ? "TRUE (C)" : "FALSE (D)");
+            Console.ResetColor();
+
+            Console.Write("\t");
+
+            // Hamle B
+            Console.ForegroundColor = moveB ? ConsoleColor.DarkGreen : ConsoleColor.Red;
+            Console.Write(moveB ? "TRUE (C)" : "FALSE (D)");
+            Console.ResetColor();
+
+            // Skor A
+            Console.Write($"\t{totalA} ({FormatDelta(deltaA)})");
+
+            // Skor B
+            Console.Write($"\t{totalB} ({FormatDelta(deltaB)})");
+
+            Console.WriteLine();
+        }
+
+        // Nihai sonucu gösterir (1v1)
+        private static void ShowFinalResult_1v1(string nameA, int scoreA, string nameB, int scoreB)
+        {
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine("\n--- OYUN SONUÇLARI ---");
+            Console.WriteLine($"Toplam Skor A ({nameA}): {scoreA}");
+            Console.WriteLine($"Toplam Skor B ({nameB}): {scoreB}");
+            Console.ResetColor();
+
+            Console.ForegroundColor = ConsoleColor.Magenta;
+            if (scoreA > scoreB)
+            {
+                Console.WriteLine($"\nGENEL KAZANAN: {nameA}!");
+            }
+            else if (scoreB > scoreA)
+            {
+                Console.WriteLine($"\nGENEL KAZANAN: {nameB}!");
+            }
+            else
+            {
+                Console.WriteLine("\nSONUÇ: BERABERLİK!");
+            }
+            Console.ResetColor();
+
+            Console.WriteLine("\nYeni bir simülasyon başlatmak için bir tuşa basın...");
+            Console.ReadKey();
+            StartMenu(); // Menüye geri dön
+        }
+
         #endregion
 
         #region EVRIM SIMÜLASYONU VE ANA AKIŞ METOTLARI
+        // ... (RunSimulation, InitialPopulationSetup, RunTournament, PlayMatch, EvolvePopulation, ShowPopulationState metotları değişmedi, sadece Evrimsel mod için kullanılacak)
 
         public static void RunSimulation()
         {
@@ -171,8 +373,9 @@ namespace OyunTeorisi
             Console.WriteLine("\n================== EVRİM SONA ERDİ ==================");
             Console.WriteLine("Popülasyon Dengeye Ulaştı veya Maksimum Jenerasyona Gelindi.");
             Console.ResetColor();
-            Console.WriteLine("\nBitirmek için bir tuşa basın...");
+            Console.WriteLine("\nYeni bir simülasyon başlatmak için bir tuşa basın...");
             Console.ReadKey();
+            StartMenu(); // Menüye geri dön
         }
 
         // Kullanıcıdan başlangıç popülasyonunu alan metot
@@ -297,7 +500,6 @@ namespace OyunTeorisi
             if (!scoringTypes.Any()) return;
 
             // Ortalama puanı hesapla
-            // NOT: Ortalama skor, toplam skorun (KarakterSayısı * TurSayısı * RakipSayısı) toplam puana bölünmesiyle hesaplanır.
             int totalActiveCount = scoringTypes.Sum(c => c.Count);
 
             var evolvedTypes = scoringTypes
@@ -359,7 +561,7 @@ namespace OyunTeorisi
             // Yuvarlamadan kaynaklanan farkı en büyük kazanana ekle (basitleştirme)
             if (newTotal != totalPopulation)
             {
-                // Mevcut popülasyonda en yüksek puana sahip olan değil, en yüksek ortalama puana sahip olanı bularak farkı ona ekle
+                // Mevcut popülasyonda en yüksek ortalama puana sahip olanı bularak farkı ona ekle
                 var topWinner = _population.FirstOrDefault(c => c.Id == winners.First().Karakter.Id);
                 if (topWinner != null)
                 {
